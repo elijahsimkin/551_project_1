@@ -11,8 +11,11 @@ void print_startup_message() {
 	printf("Type 'exit' to exit\n");
 }
 
-bool instr_not_null(char* instr) {
-	return *instr != '\0';
+bool is_instr_null(char* instr) {
+	// we presume that if the first character
+	// in the instruction is a null character
+	// that the instruction is null in entirety
+	return *instr == '\0';
 }
 
 int main () {
@@ -22,10 +25,11 @@ int main () {
 	print_startup_message();
 
 	do {
-		if (*instr != '\0') 
+		if (!is_instr_null(instr)) 
 			printf("You entered: %s\n", instr);
 		printf("§ ");
-		scanf("%s", instr);		
+
+		scanf("%s", instr); // scan the instruction for the next go around
 	} while (strcmp(instr, "exit") != 0);
 	
 	return 0;
