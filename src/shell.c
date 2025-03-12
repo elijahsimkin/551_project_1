@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
-#include <fcntl.h> //Required for file control option
+#include <fcntl.h>
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_ARGS 64
@@ -14,23 +14,24 @@ typedef int bool;
 #define true 1
 #define false 0
 
-//Global Variables
+// Global Variables
 typedef struct job {
     int id;
     pid_t pid;
     char command[MAX_INPUT_SIZE];
-    int status; //0 running, 1 stopped, 2 killed, 3 completed
+    int status;
 } job;
 
 job jobs[MAX_JOBS];
 int job_count = 0;
 
 // Function prototypes
+void execute_pipe(char *input);
 void print_startup_message();
 bool instr_not_null(char* instr);
 void parse_and_execute(char *input, char *args[]);
-void execute_command(char **args, int background);
-void handle_redirection(char **args, int *input_fd, int *output_fd, int *background);
+void execute_command(char **args, int background, int input_fd, int output_fd);
+void handle_redirection(char **args, int *input_fd, int *output_fd);
 void add_job(pid_t pid, char *command);
 void remove_job(pid_t pid);
 void list_jobs();
@@ -51,7 +52,6 @@ bool instr_not_null(char* instr) {
 int main() {
     char input_buffer[MAX_INPUT_SIZE];
     char *args[MAX_ARGS];
-    int status;
 
     //signal
     signal(SIGCHLD, sigchld_handler);
@@ -79,6 +79,54 @@ int main() {
     return 0;
 }
 
+//The redirection function gets the input and output stream from a specific file.
+void handle_redirection(char **args, int *input_fd, int *output_fd) {
+    for (int i = 0; args[i] != NULL; i++) {
+        if (strcmp(args[i], "<") == 0) {
+            // Input redirection
+            char *filename = args[i + 1];
+            if (filename == NULL) {
+                fprintf(stderr, "Error: No filename specified for input redirection.\n");
+                exit(1);
+            }
+            *input_fd = open(filename, O_RDONLY);
+            if (*input_fd < 0) {
+                perror("Error opening input file");
+                exit(1);
+            }
+            args[i] = NULL; // Remove "<" from args
+            break;
+        } else if (strcmp(args[i], ">") == 0) {
+            // Output redirection
+            char *filename = args[i + 1];
+            if (filename == NULL) {
+                fprintf(stderr, "Error: No filename specified for output redirection.\n");
+                exit(1);
+            }
+            *output_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (*output_fd < 0) {
+                perror("Error opening output file");
+                exit(1);
+            }
+            args[i] = NULL; // Remove ">" from args
+            break;
+        } else if (strcmp(args[i], ">>") == 0) {
+            // Append output redirection
+            char *filename = args[i + 1];
+            if (filename == NULL) {
+                fprintf(stderr, "Error: No filename specified for append output redirection.\n");
+                exit(1);
+            }
+            *output_fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            if (*output_fd < 0) {
+                perror("Error opening append output file");
+                exit(1);
+            }
+            args[i] = NULL; // Remove ">>" from args
+            break;
+        }
+    }
+}
 //gets the input and separates the command into different parameters
 void parse_and_execute(char *input, char *args[]) {
     char *token;
@@ -108,10 +156,7 @@ void parse_and_execute(char *input, char *args[]) {
         }
     }
 
-    int input_fd = STDIN_FILENO, output_fd = STDOUT_FILENO;
-    handle_redirection(args, &input_fd, &output_fd, &background);
-
-    // Execute the command
+    // Handle built-in commands
     if (strcmp(args[0], "exit") == 0) {
         exit(0);
     } else if (strcmp(args[0], "jobs") == 0) {
@@ -123,17 +168,31 @@ void parse_and_execute(char *input, char *args[]) {
         } else {
             fprintf(stderr, "fg: job number missing\n");
         }
-    } else {
-        execute_command(args, background);
+    }else {
+        //Redirection code
+        int input_fd = STDIN_FILENO, output_fd = STDOUT_FILENO;
+        handle_redirection(args, &input_fd, &output_fd);
+
+         // Check for piping
+        char *pipe_char = strchr(input_copy, '|');
+        if(pipe_char != NULL){
+            execute_pipe(input_copy);
+        }else{
+             execute_command(args, background, input_fd, output_fd);
+        }
     }
 }
 
 //execute_command function does the forking and calls execvp
-void execute_command(char **args, int background) {
+void execute_command(char **args, int background, int input_fd, int output_fd) {
     pid_t pid = fork();
     if (pid == 0) {
         // Child process
         setpgid(0, 0); // Create a new process group for the child
+
+        //Handle the redirection
+        dup2(input_fd, STDIN_FILENO);
+        dup2(output_fd, STDOUT_FILENO);
 
         // Restore default signal handlers
         signal(SIGINT, SIG_DFL);
@@ -157,53 +216,6 @@ void execute_command(char **args, int background) {
     } else {
         perror("fork failed");
     }
-}
-
-//The redirection function gets the input and output stream from a specific file.
-void handle_redirection(char **args, int *input_fd, int *output_fd, int *background) {
-    for (int i = 0; args[i] != NULL; i++) {
-        if (strcmp(args[i], "<") == 0) {
-            // Input redirection
-            char *filename = args[i + 1];
-            if (filename == NULL) {
-                fprintf(stderr, "Error: No filename specified for input redirection.\n");
-                exit(1);
-            }
-            *input_fd = open(filename, O_RDONLY);
-            if (*input_fd < 0) {
-                perror("Error opening input file");
-                exit(1);
-            }
-            args[i] = NULL; // Remove "<" from args
-        } else if (strcmp(args[i], ">") == 0) {
-            // Output redirection
-            char *filename = args[i + 1];
-            if (filename == NULL) {
-                fprintf(stderr, "Error: No filename specified for output redirection.\n");
-                exit(1);
-            }
-            *output_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (*output_fd < 0) {
-                perror("Error opening output file");
-                exit(1);
-            }
-            args[i] = NULL; // Remove ">" from args
-        } else if (strcmp(args[i], ">>") == 0) {
-            // Append output redirection
-            char *filename = args[i + 1];
-            if (filename == NULL) {
-                fprintf(stderr, "Error: No filename specified for append output redirection.\n");
-                exit(1);
-            }
-            *output_fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0644);
-            if (*output_fd < 0) {
-                perror("Error opening append output file");
-                exit(1);
-            }
-            args[i] = NULL; // Remove ">>" from args
-        }
-    }
-    //After we handle redirection, we do another fork-execute
 }
 
 //handles the job control commands
@@ -249,4 +261,158 @@ void sigchld_handler(int s) {
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         remove_job(pid);
     }
+}
+
+// Function to execute a pipe command
+void execute_pipe(char *input) {
+    int pipefd[2];
+    pid_t p1, p2;
+    char *cmd1 = NULL, *cmd2 = NULL;
+    char *saveptr;
+    int fd_in = 0, fd_out = 1; //Default file desciptor are stdin and stdout
+
+    char input_copy[MAX_INPUT_SIZE];
+    strcpy(input_copy, input);
+
+    // Split the input into two commands based on the pipe symbol
+    cmd1 = strtok_r(input_copy, "|", &saveptr);
+    if (cmd1 == NULL) {
+        fprintf(stderr, "Error: Invalid pipe command.\n");
+        return;
+    }
+
+    cmd2 = strtok_r(NULL, "|", &saveptr);
+    if (cmd2 == NULL) {
+        fprintf(stderr, "Error: Invalid pipe command.\n");
+        return;
+    }
+
+    // Check for input and output redirection in cmd1
+    char *args1[MAX_ARGS];
+    int i = 0;
+    char *token1 = strtok(cmd1, " ");
+    while (token1 != NULL && i < MAX_ARGS - 1) {
+        if (strcmp(token1, "<") == 0) {
+             token1 = strtok(NULL, " ");  // get the input file name
+                if (token1 == NULL) {
+                     fprintf(stderr, "Missing input file name\n");
+                     return;
+                }
+                if ((fd_in = open(token1, O_RDONLY)) < 0) {
+                    perror("Couldn't open input file");
+                    return;
+                }
+                 token1 = strtok(NULL, " ");
+        }
+        else if (strcmp(token1, ">") == 0){
+                 token1 = strtok(NULL, " ");  // get the output file name
+                  if (token1 == NULL) {
+                     fprintf(stderr, "Missing output file name\n");
+                     return;
+                 }
+
+                   if ((fd_out = open(token1, O_WRONLY | O_TRUNC | O_CREAT, 0644)) < 0) {
+                        perror("Couldn't open output file");
+                        return;
+                    }
+                   token1 = strtok(NULL, " ");
+        }
+        else{
+            args1[i++] = token1;
+            token1 = strtok(NULL, " ");
+        }
+    }
+    args1[i] = NULL;
+ // Check for input and output redirection in cmd2
+    char *args2[MAX_ARGS];
+    i = 0;
+    char *token2 = strtok(cmd2, " ");
+
+     while (token2 != NULL && i < MAX_ARGS - 1) {
+        if (strcmp(token2, "<") == 0) {
+             token2 = strtok(NULL, " ");  // get the input file name
+                if (token2 == NULL) {
+                     fprintf(stderr, "Missing input file name\n");
+                     return;
+                }
+                if ((fd_in = open(token2, O_RDONLY)) < 0) {
+                    perror("Couldn't open input file");
+                    return;
+                }
+                 token2 = strtok(NULL, " ");
+        }
+        else if (strcmp(token2, ">") == 0){
+                 token2 = strtok(NULL, " ");  // get the output file name
+                  if (token2 == NULL) {
+                     fprintf(stderr, "Missing output file name\n");
+                     return;
+                 }
+
+                   if ((fd_out = open(token2, O_WRONLY | O_TRUNC | O_CREAT, 0644)) < 0) {
+                        perror("Couldn't open output file");
+                        return;
+                    }
+                   token2 = strtok(NULL, " ");
+        }
+        else{
+            args2[i++] = token2;
+            token2 = strtok(NULL, " ");
+        }
+    }
+    args2[i] = NULL;
+//All functions are forking here
+
+    if (pipe(pipefd) < 0) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    p1 = fork();
+    if (p1 < 0) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+
+    if (p1 == 0) {
+        // Child 1: Execute the command before the pipe
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[0]);
+        close(pipefd[1]);
+
+        //redirect
+         dup2(fd_in, STDIN_FILENO);
+        dup2(fd_out, STDOUT_FILENO);
+        execvp(args1[0], args1);
+        perror("execvp");
+        exit(EXIT_FAILURE);
+
+    }
+
+    p2 = fork();
+    if (p2 < 0) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+
+    if (p2 == 0) {
+        // Child 2: Execute the command after the pipe
+        dup2(pipefd[0], STDIN_FILENO);
+        close(pipefd[0]);
+        close(pipefd[1]);
+
+        dup2(fd_in, STDIN_FILENO);
+        dup2(fd_out, STDOUT_FILENO);
+        execvp(args2[0], args2);
+        perror("execvp");
+        exit(EXIT_FAILURE);
+    }
+
+    // Parent: Close pipe ends and wait for children
+    close(pipefd[0]);
+    close(pipefd[1]);
+    waitpid(p1, NULL, 0);
+    waitpid(p2, NULL, 0);
+
+     if (fd_in != 0) close(fd_in);
+    if (fd_out != 1) close(fd_out);
 }
