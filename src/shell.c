@@ -34,29 +34,36 @@ void process_input(char *input) {
     int pipe_fd[2], input_fd = 0;
     char *commands[MAX_ARGS];
     int command_count = 0;
+    int background_flags[MAX_ARGS] = {0};
 
     char *ptr = input;
     while (*ptr) {
         while (*ptr == ' ' || *ptr == '\t') ptr++;
         if (!*ptr) break;
-        commands[command_count++] = ptr;
-        while (*ptr && *ptr != '|') ptr++;
+        commands[command_count] = ptr;
+        background_flags[command_count] = 0;
+        
+        while (*ptr && *ptr != '|' && *ptr != '&') ptr++;
         if (*ptr == '|') {
             *ptr++ = '\0';
+        } else if (*ptr == '&') {
+            *ptr++ = '\0';
+            background_flags[command_count] = 1;
         }
+        command_count++;
     }
     commands[command_count] = NULL;
 
     for (int i = 0; i < command_count; i++) {
         char *token, *command = NULL, *args[MAX_ARGS];
-        int arg_count = 0, background = 0;
+        int arg_count = 0;
         
         char *cmd_ptr = commands[i];
         while (*cmd_ptr) {
             while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
             if (!*cmd_ptr) break;
             token = cmd_ptr;
-            while (*cmd_ptr && *cmd_ptr != ' ' && *cmd_ptr != '\t' && *cmd_ptr != '>' && *cmd_ptr != '&') cmd_ptr++;
+            while (*cmd_ptr && *cmd_ptr != ' ' && *cmd_ptr != '\t' && *cmd_ptr != '>') cmd_ptr++;
             if (*cmd_ptr) {
                 *cmd_ptr++ = '\0';
                 while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
@@ -75,12 +82,10 @@ void process_input(char *input) {
                 if (fd < 0) {
                     return;
                 }
-                execute_command(command, args, input_fd, fd, background);
+                execute_command(command, args, input_fd, fd, background_flags[i]);
                 close(fd);
                 input_fd = 0;
                 arg_count = 0;
-            } else if (strcmp(token, "&") == 0) {
-                background = 1;
             } else {
                 if (arg_count == 0) command = token;
                 args[arg_count++] = token;
@@ -90,11 +95,11 @@ void process_input(char *input) {
         
         if (i < command_count - 1) {
             pipe(pipe_fd);
-            execute_command(command, args, input_fd, pipe_fd[PIPE_WRITE], background);
+            execute_command(command, args, input_fd, pipe_fd[PIPE_WRITE], background_flags[i]);
             close(pipe_fd[PIPE_WRITE]);
             input_fd = pipe_fd[PIPE_READ];
         } else {
-            execute_command(command, args, input_fd, 1, background);
+            execute_command(command, args, input_fd, 1, background_flags[i]);
         }
     }
 }
