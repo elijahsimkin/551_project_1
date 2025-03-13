@@ -42,6 +42,7 @@ def run_test(input_commands, expected_outputs, should_exit=True, check_stderr=Fa
         raise AssertionError("Shell did not exit cleanly")
 
     print("Test passed.")
+
 def test_command_execution():
     """Test basic command execution."""
     run_test(["echo Hello, world!", "exit"], ["Hello, world!"])
@@ -72,6 +73,16 @@ def test_exit():
     """Ensure shell exits properly."""
     run_test(["exit"], [], should_exit=True)
 
+def test_cd_command():
+    """Test changing directories with cd."""
+    original_dir = os.getcwd()  # Get the current directory
+    test_dir = "/tmp"  # Use a safe directory to switch to
+
+    run_test([f"cd {test_dir}", "pwd", "exit"], [test_dir])
+
+    # Ensure we return to the original directory after the test
+    os.chdir(original_dir)
+
 if __name__ == "__main__":
     test_command_execution()
     test_io_redirection()
@@ -79,3 +90,4 @@ if __name__ == "__main__":
     test_pipes()
     test_edge_cases()
     test_exit()
+    test_cd_command()
