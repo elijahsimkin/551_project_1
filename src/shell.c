@@ -53,6 +53,18 @@ void list_jobs() {
     }
 }
 
+void foreground_job(int job_id) {
+    for (int i = 0; i < job_count; i++) {
+        if (jobs[i].active && jobs[i].job_id == job_id) {
+            printf("Bringing job %d to foreground: %s\n", job_id, jobs[i].command);
+            waitpid(jobs[i].pid, NULL, 0);
+            jobs[i].active = 0;
+            return;
+        }
+    }
+    printf("fg: job %d not found\n", job_id);
+}
+
 void execute_command(char *command, char **args, int input_fd, int output_fd, int background) {
     pid_t pid = fork();
     if (pid == 0) { // Child process
@@ -79,8 +91,13 @@ void execute_command(char *command, char **args, int input_fd, int output_fd, in
 void process_input(char *input) {
     check_jobs();
 
-    if (strcmp(input, "jobs") == 0) {
+    if (strncmp(input, "jobs", 4) == 0) {
         list_jobs();
+        return;
+    }
+    if (strncmp(input, "fg", 2) == 0) {
+        int job_id = atoi(input + 3);
+        foreground_job(job_id);
         return;
     }
 
@@ -145,15 +162,7 @@ void process_input(char *input) {
                 args[arg_count] = NULL;
             }
         }
-        
-        if (i < command_count - 1) {
-            pipe(pipe_fd);
-            execute_command(command, args, input_fd, pipe_fd[PIPE_WRITE], background_flags[i]);
-            close(pipe_fd[PIPE_WRITE]);
-            input_fd = pipe_fd[PIPE_READ];
-        } else {
-            execute_command(command, args, input_fd, 1, background_flags[i]);
-        }
+        execute_command(command, args, input_fd, 1, background_flags[i]);
     }
 }
 
