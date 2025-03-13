@@ -1,13 +1,11 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g
-SRC = $(wildcard src/*.c)  # Find all .c files in src/
-OBJ = $(patsubst src/%.c, src/%.o, $(SRC))  # Convert src/*.c to src/*.o
 
-myshell: $(OBJ)
-	$(CC) $(CFLAGS) -o myshell $(OBJ)
+sshell: src/shell.c
+	$(CC) $(CFLAGS) -o sshell src/shell.c
 
-src/%.o: src/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
+test: sshell
+	python3 src/test.py
 
 clean:
-	rm -f myshell $(OBJ)
+	rm -f sshell
