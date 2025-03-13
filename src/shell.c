@@ -105,7 +105,7 @@ void process_input(char *input) {
         return;
     }
 
-    int pipe_fd[2], input_fd = STDIN_FILENO;
+    int pipe_fd[2], input_fd = STDIN_FILENO, output_fd = STDOUT_FILENO;
     char *commands[MAX_ARGS];
     int command_count = 0;
     int background_flags[MAX_ARGS] = {0};
@@ -117,9 +117,20 @@ void process_input(char *input) {
         commands[command_count] = ptr;
         background_flags[command_count] = 0;
         
-        while (*ptr && *ptr != '|' && *ptr != '&') ptr++;
+        while (*ptr && *ptr != '|' && *ptr != '>' && *ptr != '&') ptr++;
         if (*ptr == '|') {
             *ptr++ = '\0';
+        } else if (*ptr == '>') {
+            *ptr++ = '\0';
+            while (*ptr == ' ' || *ptr == '\t') ptr++;
+            char *filename = ptr;
+            while (*ptr && *ptr != ' ' && *ptr != '\t') ptr++;
+            if (*ptr) *ptr++ = '\0';
+            output_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (output_fd < 0) {
+                perror("open failed");
+                return;
+            }
         } else if (*ptr == '&') {
             *ptr++ = '\0';
             background_flags[command_count] = 1;
@@ -137,7 +148,7 @@ void process_input(char *input) {
             while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
             if (!*cmd_ptr) break;
             token = cmd_ptr;
-            while (*cmd_ptr && *cmd_ptr != ' ' && *cmd_ptr != '\t' && *cmd_ptr != '>') cmd_ptr++;
+            while (*cmd_ptr && *cmd_ptr != ' ' && *cmd_ptr != '\t') cmd_ptr++;
             if (*cmd_ptr) {
                 *cmd_ptr++ = '\0';
                 while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
@@ -147,16 +158,9 @@ void process_input(char *input) {
             args[arg_count++] = token;
             args[arg_count] = NULL;
         }
-        
-        if (i < command_count - 1) {
-            pipe(pipe_fd);
-            execute_command(command, args, input_fd, pipe_fd[PIPE_WRITE], background_flags[i]);
-            close(pipe_fd[PIPE_WRITE]);
-            input_fd = pipe_fd[PIPE_READ];
-        } else {
-            execute_command(command, args, input_fd, STDOUT_FILENO, background_flags[i]);
-        }
+        execute_command(command, args, input_fd, output_fd, background_flags[i]);
     }
+    if (output_fd != STDOUT_FILENO) close(output_fd);
 }
 
 int main() {
