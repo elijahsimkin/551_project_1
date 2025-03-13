@@ -147,6 +147,26 @@ int tokenizeCommand(char *commandStr, char **tokens) {
     return count;
 }
 
+void executeCommands(char **commands, int commandCount, int *backgroundFlags, int output_fd) {
+    int in_fd = STDIN_FILENO, pipe_fd[2];
+    for (int i = 0; i < commandCount; i++) {
+        char *args[MAX_ARGS];
+        // Tokenize the current command segment
+        tokenizeCommand(commands[i], args);
+        if (i < commandCount - 1) {
+            if (pipe(pipe_fd) < 0) {
+                perror("pipe failed");
+                return;
+            }
+            runCommand(args[0], args, in_fd, pipe_fd[PIPE_WRITE], backgroundFlags[i]);
+            in_fd = pipe_fd[PIPE_READ];
+        } else {
+            runCommand(args[0], args, in_fd, output_fd, backgroundFlags[i]);
+            if (in_fd != STDIN_FILENO) close(in_fd);
+        }
+    }
+}
+
 char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
     segment = skipWhitespace(segment);
     char *end = segment;
@@ -197,23 +217,7 @@ void processInput(char *input) {
     int output_fd;
     int commandCount = parseInputLine(input, commands, backgroundFlags, &output_fd);
 
-    int in_fd = STDIN_FILENO, pipe_fd[2];
-    for (int i = 0; i < commandCount; i++) {
-        char *args[MAX_ARGS];
-        // Tokenize the current command segment
-        tokenizeCommand(commands[i], args);
-        if (i < commandCount - 1) {
-            if (pipe(pipe_fd) < 0) {
-                perror("pipe failed");
-                return;
-            }
-            runCommand(args[0], args, in_fd, pipe_fd[PIPE_WRITE], backgroundFlags[i]);
-            in_fd = pipe_fd[PIPE_READ];
-        } else {
-            runCommand(args[0], args, in_fd, output_fd, backgroundFlags[i]);
-            if (in_fd != STDIN_FILENO) close(in_fd);
-        }
-    }
+    executeCommands(commands, commandCount, backgroundFlags, output_fd);
     if (output_fd != STDOUT_FILENO) close(output_fd);
 }
 
