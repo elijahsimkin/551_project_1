@@ -6,6 +6,20 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
+static inline char *skipWhitespace(char *ptr) {
+    while (*ptr == ' ' || *ptr == '\t') {
+        ptr++;
+    }
+    return ptr;
+}
+
+static inline char *skipWhitespaceAndPipes(char *ptr) {
+    while (*ptr == ' ' || *ptr == '\t' || *ptr == '|') {
+        ptr++;
+    }
+    return ptr;
+}
+
 #define MAX_ARGS 128
 #define MAX_JOBS 64
 #define PIPE_READ  0
@@ -140,14 +154,13 @@ int parseInputLine(char *input, char **commands, int *backgroundFlags, int *outp
     char *ptr = input;
 
     while (*ptr) {
-        while (*ptr == ' ' || *ptr == '\t') ptr++;
+        ptr = skipWhitespace(ptr);
         if (!*ptr) break;
         commands[count] = ptr;
         backgroundFlags[count] = 0;
         ptr = parseCommandSegment(ptr, &backgroundFlags[count], output_fd);
         count++;
-        // If the current character is a pipe, skip it
-        while (*ptr == ' ' || *ptr == '\t' || *ptr == '|') ptr++;
+        ptr = skipWhitespaceAndPipes(ptr);
     }
     commands[count] = NULL;
     return count;
