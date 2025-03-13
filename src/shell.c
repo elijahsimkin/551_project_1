@@ -64,14 +64,24 @@ int main() {
         printf("§ ");
         fflush(stdout);
 
-        if (fgets(input_buffer, MAX_INPUT_SIZE, stdin) == NULL) {
+		char *instr = fgets(input_buffer, MAX_INPUT_SIZE, stdin);
+
+        if (instr == NULL) {
             printf("\n");
             break;
         }
 
-        input_buffer[strcspn(input_buffer, "\n")] = 0;
+		// if an instruction looks like
+		//    "exit\n"
+		// then we want to set it to 
+		//    "exit\0"
+		// for optimal string performance
+		int new_line_index = strcspn(input_buffer, "\n");
+        input_buffer[new_line_index] = '\0';
 
-        if (input_buffer[0] == '\0') {
+		bool instr_is_empty = input_buffer[0] == '\0';
+
+        if (instr_is_empty) {
             continue;
         }
 
@@ -129,43 +139,70 @@ void handle_redirection(char **args, int *input_fd, int *output_fd) {
         }
     }
 }
-//gets the input and separates the command into different parameters
-void parse_and_execute(char *input, char *args[]) {
-    char *token;
+void tokenize_input(char *input, char *args[]) {
+    char *token = strtok(input, " ");
     int i = 0;
-    int background = 0;
-    char input_copy[MAX_INPUT_SIZE];
-    strcpy(input_copy, input);
 
-    // Tokenize the input
-    token = strtok(input, " ");
     while (token != NULL && i < MAX_ARGS - 1) {
         args[i++] = token;
         token = strtok(NULL, " ");
     }
     args[i] = NULL;
+}
+bool is_background_executable(char *args[]) {
+    // Check for background execution
+	for (int j = 0; args[j] != NULL; j++) {
+		if (strcmp(args[j], "&") == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+void remove_background_operator_from_list(char *args[]) {
+	    // Check for background execution
+		for (int j = 0; args[j] != NULL; j++) {
+			if (strcmp(args[j], "&") == 0) {
+				args[j] = NULL; // Remove "&" from the arguments
+				return;
+			}
+		}
+}
+//gets the input and separates the command into different parameters
+void parse_and_execute(char *input, char *args[]) {
+	// input is the entire input i.e. "echo "hi""
+	// args is empty
+    char *token;
+    int background = 0;
+    char input_copy[MAX_INPUT_SIZE];
+    strcpy(input_copy, input);
+	
+	tokenize_input(input, args);
+	// if input was "echo "hi" "
+	// args is now ["echo", "hi", NULL]
+
+	for (int i = 0; args[i] != NULL; i++) {
+		printf("args[%d] = %s\n", i, args[i]);
+	}
 
     if (args[0] == NULL) {
+		// if there is no argument, then do nothing
         return;
     }
 
     // Check for background execution
-    for (int j = 0; args[j] != NULL; j++) {
-        if (strcmp(args[j], "&") == 0) {
-            background = 1;
-            args[j] = NULL; // Remove "&" from the arguments
-            break;
-        }
-    }
-    
+	background = is_background_executable(args);
+	remove_background_operator_from_list(args);
+
     // FIX: Handle `cd` command before calling `execvp()`
     if (strcmp(args[0], "cd") == 0) {
-        if (args[1] == NULL) {
+		bool no_argument = args[1] == NULL;
+        if (no_argument) {
             fprintf(stderr, "cd: missing argument\n");
-        } else {
-            if (chdir(args[1]) != 0) {  // Change the working directory
-                perror("cd failed");
-            }
+			return;
+		}
+
+        if (chdir(args[1]) != 0) {  // Change the working directory
+            perror("cd failed");
         }
         return; // Prevent `execvp()` from running
     }
@@ -182,7 +219,7 @@ void parse_and_execute(char *input, char *args[]) {
         } else {
             fprintf(stderr, "fg: job number missing\n");
         }
-    }else {
+    } else {
         //Redirection code
         int input_fd = STDIN_FILENO, output_fd = STDOUT_FILENO;
         handle_redirection(args, &input_fd, &output_fd);
