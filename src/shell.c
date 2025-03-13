@@ -108,6 +108,24 @@ void bringJobToForeground(int job_id) {
     printf("fg: job %d not found\n", job_id);
 }
 
+//function to handle cd
+void handle_cd(char **args) {
+    if (args[1] == NULL) {
+        // Change to home directory if no argument is provided
+        const char *home = getenv("HOME");
+        if (home == NULL) home = "/";  // Fallback to root if HOME is not set
+        if (chdir(home) != 0) {
+            perror("cd failed");
+        }
+    } else {
+        // Change to specified directory
+        if (chdir(args[1]) != 0) {
+            perror("cd failed");
+        }
+    }
+}
+
+
 // Command execution wrapper
 void runCommand(const char *command, char **args, int in_fd, int out_fd, int background) {
     pid_t pid = fork();
