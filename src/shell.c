@@ -22,7 +22,6 @@ void execute_command(char *command, char **args, int input_fd, int output_fd, in
             close(output_fd);
         }
         execvp(command, args);
-        perror("execvp failed");
         _exit(1);
     } else if (pid > 0) { // Parent process
         if (!background) {
@@ -33,44 +32,69 @@ void execute_command(char *command, char **args, int input_fd, int output_fd, in
 
 void process_input(char *input) {
     int pipe_fd[2], input_fd = 0;
-    char *command = NULL, *args[MAX_ARGS];
-    int arg_count = 0, background = 0;
-    char *commands[10]; // Support for up to 10 piped commands
-    int cmd_count = 0;
-    
+    char *commands[MAX_ARGS];
+    int command_count = 0;
+
     char *ptr = input;
     while (*ptr) {
         while (*ptr == ' ' || *ptr == '\t') ptr++;
         if (!*ptr) break;
-        
-        commands[cmd_count++] = ptr;
+        commands[command_count++] = ptr;
         while (*ptr && *ptr != '|') ptr++;
-        if (*ptr) {
+        if (*ptr == '|') {
             *ptr++ = '\0';
         }
     }
-    
-    for (int i = 0; i < cmd_count; i++) {
+    commands[command_count] = NULL;
+
+    for (int i = 0; i < command_count; i++) {
+        char *token, *command = NULL, *args[MAX_ARGS];
+        int arg_count = 0, background = 0;
+        
         char *cmd_ptr = commands[i];
-        arg_count = 0;
         while (*cmd_ptr) {
             while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
             if (!*cmd_ptr) break;
-            args[arg_count++] = cmd_ptr;
-            while (*cmd_ptr && *cmd_ptr != ' ' && *cmd_ptr != '\t') cmd_ptr++;
+            token = cmd_ptr;
+            while (*cmd_ptr && *cmd_ptr != ' ' && *cmd_ptr != '\t' && *cmd_ptr != '>' && *cmd_ptr != '&') cmd_ptr++;
             if (*cmd_ptr) {
                 *cmd_ptr++ = '\0';
+                while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
+            }
+            
+            if (*token == '\0') continue;
+            
+            if (strcmp(token, ">") == 0) {
+                token = cmd_ptr;
+                while (*cmd_ptr && *cmd_ptr != ' ' && *cmd_ptr != '\t') cmd_ptr++;
+                if (*cmd_ptr) {
+                    *cmd_ptr++ = '\0';
+                    while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
+                }
+                int fd = open(token, 577, 0644); // O_WRONLY | O_CREAT | O_TRUNC
+                if (fd < 0) {
+                    return;
+                }
+                execute_command(command, args, input_fd, fd, background);
+                close(fd);
+                input_fd = 0;
+                arg_count = 0;
+            } else if (strcmp(token, "&") == 0) {
+                background = 1;
+            } else {
+                if (arg_count == 0) command = token;
+                args[arg_count++] = token;
+                args[arg_count] = NULL;
             }
         }
-        args[arg_count] = NULL;
         
-        if (i < cmd_count - 1) {
+        if (i < command_count - 1) {
             pipe(pipe_fd);
-            execute_command(args[0], args, input_fd, pipe_fd[PIPE_WRITE], background);
+            execute_command(command, args, input_fd, pipe_fd[PIPE_WRITE], background);
             close(pipe_fd[PIPE_WRITE]);
             input_fd = pipe_fd[PIPE_READ];
         } else {
-            execute_command(args[0], args, input_fd, 1, background);
+            execute_command(command, args, input_fd, 1, background);
         }
     }
 }
