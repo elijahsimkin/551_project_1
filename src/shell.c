@@ -68,17 +68,21 @@ void foreground_job(int job_id) {
 void execute_command(char *command, char **args, int input_fd, int output_fd, int background) {
     pid_t pid = fork();
     if (pid == 0) { // Child process
-        if (input_fd != 0) {
-            dup2(input_fd, 0);
+        if (input_fd != STDIN_FILENO) {
+            dup2(input_fd, STDIN_FILENO);
             close(input_fd);
         }
-        if (output_fd != 1) {
-            dup2(output_fd, 1);
+        if (output_fd != STDOUT_FILENO) {
+            dup2(output_fd, STDOUT_FILENO);
             close(output_fd);
         }
         execvp(command, args);
+        perror("execvp failed");
         _exit(1);
     } else if (pid > 0) { // Parent process
+        if (input_fd != STDIN_FILENO) close(input_fd);
+        if (output_fd != STDOUT_FILENO) close(output_fd);
+        
         if (background) {
             add_job(pid, command);
             printf("[Job %d] Started: %s (PID: %d)\n", job_count, command, pid);
@@ -101,7 +105,7 @@ void process_input(char *input) {
         return;
     }
 
-    int pipe_fd[2], input_fd = 0;
+    int pipe_fd[2], input_fd = STDIN_FILENO;
     char *commands[MAX_ARGS];
     int command_count = 0;
     int background_flags[MAX_ARGS] = {0};
@@ -138,31 +142,20 @@ void process_input(char *input) {
                 *cmd_ptr++ = '\0';
                 while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
             }
-            
             if (*token == '\0') continue;
-            
-            if (strcmp(token, ">") == 0) {
-                token = cmd_ptr;
-                while (*cmd_ptr && *cmd_ptr != ' ' && *cmd_ptr != '\t') cmd_ptr++;
-                if (*cmd_ptr) {
-                    *cmd_ptr++ = '\0';
-                    while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
-                }
-                int fd = open(token, 577, 0644); // O_WRONLY | O_CREAT | O_TRUNC
-                if (fd < 0) {
-                    return;
-                }
-                execute_command(command, args, input_fd, fd, background_flags[i]);
-                close(fd);
-                input_fd = 0;
-                arg_count = 0;
-            } else {
-                if (arg_count == 0) command = token;
-                args[arg_count++] = token;
-                args[arg_count] = NULL;
-            }
+            if (arg_count == 0) command = token;
+            args[arg_count++] = token;
+            args[arg_count] = NULL;
         }
-        execute_command(command, args, input_fd, 1, background_flags[i]);
+        
+        if (i < command_count - 1) {
+            pipe(pipe_fd);
+            execute_command(command, args, input_fd, pipe_fd[PIPE_WRITE], background_flags[i]);
+            close(pipe_fd[PIPE_WRITE]);
+            input_fd = pipe_fd[PIPE_READ];
+        } else {
+            execute_command(command, args, input_fd, STDOUT_FILENO, background_flags[i]);
+        }
     }
 }
 
