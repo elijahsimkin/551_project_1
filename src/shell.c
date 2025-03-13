@@ -229,6 +229,12 @@ void processInput(char *input) {
         bringJobToForeground(job_id);
         return;
     }
+    if (strncmp(input, "cd", 2) == 0) {
+        char *args[MAX_ARGS];
+        tokenizeCommand(input, args);
+        handle_cd(args);
+        return;
+    }
 
     char *commands[MAX_ARGS];
     int backgroundFlags[MAX_ARGS] = {0};
