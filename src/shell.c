@@ -193,7 +193,7 @@ void parse_and_execute(char *input, char *args[]) {
 	background = is_background_executable(args);
 	remove_background_operator_from_list(args);
 
-    // FIX: Handle `cd` command before calling `execvp()`
+	// CD command is a built-in command; do not need to delegate to execvp
     if (strcmp(args[0], "cd") == 0) {
 		bool no_argument = args[1] == NULL;
         if (no_argument) {
@@ -201,24 +201,25 @@ void parse_and_execute(char *input, char *args[]) {
 			return;
 		}
 
-        if (chdir(args[1]) != 0) {  // Change the working directory
+		char* new_directory = args[1];
+		bool didChangeDirSucceed = chdir(new_directory) == 0;
+
+        if (!didChangeDirSucceed) {  // Change the working directory
             perror("cd failed");
         }
-        return; // Prevent `execvp()` from running
-    }
-
-    // Handle built-in commands
-    if (strcmp(args[0], "exit") == 0) {
+    } else if (strcmp(args[0], "exit") == 0) {
         exit(0);
     } else if (strcmp(args[0], "jobs") == 0) {
         list_jobs();
     } else if (strcmp(args[0], "fg") == 0) {
-        if (args[1] != NULL) {
-            int job_id = atoi(args[1]);
-            bring_to_foreground(job_id);
-        } else {
+		if (args[1] == NULL) {
             fprintf(stderr, "fg: job number missing\n");
-        }
+			return;
+		}
+		// attoi converts the string to an integer
+        int job_id = atoi(args[1]);
+		
+        bring_to_foreground(job_id);
     } else {
         //Redirection code
         int input_fd = STDIN_FILENO, output_fd = STDOUT_FILENO;
