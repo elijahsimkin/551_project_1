@@ -83,11 +83,11 @@ void execute_command(char *command, char **args, int input_fd, int output_fd, in
         if (input_fd != STDIN_FILENO) close(input_fd);
         if (output_fd != STDOUT_FILENO) close(output_fd);
         
-        if (background) {
+        if (!background) {
+            waitpid(pid, NULL, 0);
+        } else {
             add_job(pid, command);
             printf("[Job %d] Started: %s (PID: %d)\n", job_count, command, pid);
-        } else {
-            waitpid(pid, NULL, 0);
         }
     }
 }
@@ -104,11 +104,11 @@ void process_input(char *input) {
         foreground_job(job_id);
         return;
     }
-
-    int pipe_fd[2], input_fd = STDIN_FILENO, output_fd = STDOUT_FILENO;
+    
     char *commands[MAX_ARGS];
     int command_count = 0;
     int background_flags[MAX_ARGS] = {0};
+    int output_fd = STDOUT_FILENO;
 
     char *ptr = input;
     while (*ptr) {
@@ -139,6 +139,9 @@ void process_input(char *input) {
     }
     commands[command_count] = NULL;
 
+    int input_fd = STDIN_FILENO;
+    int pipe_fd[2];
+    
     for (int i = 0; i < command_count; i++) {
         char *token, *command = NULL, *args[MAX_ARGS];
         int arg_count = 0;
@@ -158,7 +161,16 @@ void process_input(char *input) {
             args[arg_count++] = token;
             args[arg_count] = NULL;
         }
-        execute_command(command, args, input_fd, output_fd, background_flags[i]);
+        
+        if (i < command_count - 1) {
+            pipe(pipe_fd);
+            execute_command(command, args, input_fd, pipe_fd[PIPE_WRITE], background_flags[i]);
+            close(pipe_fd[PIPE_WRITE]); // Close write end in parent
+            input_fd = pipe_fd[PIPE_READ]; // Pass read end to next command
+        } else {
+            execute_command(command, args, input_fd, output_fd, background_flags[i]);
+            if (input_fd != STDIN_FILENO) close(input_fd); // Close last input_fd
+        }
     }
     if (output_fd != STDOUT_FILENO) close(output_fd);
 }
