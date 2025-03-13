@@ -5,6 +5,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#define SPECIAL_PIPE '|' 
+#define SPECIAL_REDIR '>'
+#define SPECIAL_BG '&'
 
 static inline char *skipWhitespace(char *ptr) {
     while (*ptr == ' ' || *ptr == '\t') {
@@ -16,6 +19,32 @@ static inline char *skipWhitespace(char *ptr) {
 static inline char *skipWhitespaceAndPipes(char *ptr) {
     while (*ptr == ' ' || *ptr == '\t' || *ptr == '|') {
         ptr++;
+    }
+    return ptr;
+}
+
+static char *handleRedirection(char *ptr, int *backgroundFlag, int *output_fd) {
+    /* Capture the special character and terminate the current token */
+    char special = *ptr;
+    *ptr = '\0';
+    ptr++;
+    
+    if (special == SPECIAL_REDIR) {
+        ptr = skipWhitespace(ptr);
+        char *filename = ptr;
+        while (*ptr && *ptr != ' ' && *ptr != '\t') {
+            ptr++;
+        }
+        if (*ptr) {
+            *ptr = '\0';
+            ptr++;
+        }
+        *output_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (*output_fd < 0) {
+            perror("open failed");
+        }
+    } else if (special == SPECIAL_BG) {
+        *backgroundFlag = 1;
     }
     return ptr;
 }
@@ -118,31 +147,14 @@ int tokenizeCommand(char *commandStr, char **tokens) {
     return count;
 }
 
-// Parse one command segment for special characters and adjust output redirection or background flag
-// Returns pointer to the next segment start if any
 char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
-    // Remove leading spaces
-    while (*segment == ' ' || *segment == '\t') segment++;
-
+    segment = skipWhitespace(segment);
     char *end = segment;
-    while (*end && *end != '|' && *end != '>' && *end != '&') end++;
-
-    if (*end) {
-        char special = *end;
-        *end = '\0';
+    while (*end && *end != SPECIAL_PIPE && *end != SPECIAL_REDIR && *end != SPECIAL_BG) {
         end++;
-        if (special == '>') {
-            while (*end == ' ' || *end == '\t') end++;
-            char *filename = end;
-            while (*end && *end != ' ' && *end != '\t') end++;
-            if (*end) *end++ = '\0';
-            *output_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (*output_fd < 0) {
-                perror("open failed");
-            }
-        } else if (special == '&') {
-            *backgroundFlag = 1;
-        }
+    }
+    if (*end) {
+        end = handleRedirection(end, backgroundFlag, output_fd);
     }
     return end;
 }
