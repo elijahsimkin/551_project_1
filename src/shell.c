@@ -5,11 +5,13 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <termios.h>
 
 #define MAX_ARGS 128
 #define MAX_JOBS 64
 #define PIPE_READ 0
 #define PIPE_WRITE 1
+#define MAX_HISTORY 100
 
 typedef struct {
     int job_id;
@@ -20,6 +22,10 @@ typedef struct {
 
 Job jobs[MAX_JOBS];
 int job_count = 0;
+
+char history[MAX_HISTORY][1024];
+int history_index = 0;
+int history_pos = -1;
 
 void add_job(pid_t pid, char *command) {
     if (job_count < MAX_JOBS) {
@@ -122,6 +128,11 @@ void process_input(char *input) {
         foreground_job(job_id);
         return;
     }
+
+    // Add to history
+    strncpy(history[history_index % MAX_HISTORY], input, sizeof(history[history_index % MAX_HISTORY]) - 1);
+    history_index++;
+    history_pos = history_index;
     
     char *commands[MAX_ARGS];
     int command_count = 0;
@@ -199,16 +210,101 @@ void process_input(char *input) {
     if (output_fd != STDOUT_FILENO) close(output_fd);
 }
 
+void enable_raw_mode() {
+    struct termios term_settings;
+
+    tcgetattr(STDIN_FILENO, &term_settings);
+
+    term_settings.c_lflag &= ~(ICANON | ECHO);
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &term_settings);
+}
+
+void disable_raw_mode() {
+    struct termios term_settings;
+
+    tcgetattr(STDIN_FILENO, &term_settings);
+
+    term_settings.c_lflag |= ICANON | ECHO;
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &term_settings);
+}
+
 int main() {
     char input[1024];
+    enable_raw_mode(); // Enable raw mode for handling arrow keys
 
     while (1) {
         printf("shell> ");
         fflush(stdout);
-        if (!fgets(input, sizeof(input), stdin)) break;
-        input[strcspn(input, "\n")] = 0; // Remove newline
-        if (strcmp(input, "exit") == 0) break;
-        process_input(input);
+
+        int pos = 0;
+        memset(input, 0, sizeof(input));
+
+        while (1) {
+            char c = getchar();
+
+            if (c == '\n') { // Enter key
+                input[pos] = '\0';
+                break;
+            } else if (c == '\x1B') { // Escape sequence for arrow keys
+                getchar(); // Skip '['
+                char arrow = getchar();
+                if (arrow == 'A') { // Up arrow
+                    if (history_pos > 0) {
+                        history_pos--;
+                        strcpy(input, history[history_pos % MAX_HISTORY]);
+                        printf("\r\033[Kshell> %s", input); // Clear line and print history
+                        fflush(stdout);
+                        pos = strlen(input);
+                    }
+                } else if (arrow == 'B') { // Down arrow
+                    if (history_pos < history_index - 1) {
+                        history_pos++;
+                        strcpy(input, history[history_pos % MAX_HISTORY]);
+                        printf("\r\033[Kshell> %s", input); // Clear line and print history
+                        fflush(stdout);
+                        pos = strlen(input);
+                    } else {
+                        history_pos = history_index; // Reset to end of history
+                        memset(input, 0, sizeof(input));
+                        printf("\r\033[Kshell> "); // Clear line
+                        fflush(stdout);
+                        pos = 0;
+                    }
+                } else if (arrow == 'D') { // Left arrow
+                    if (pos > 0) {
+                        pos--; // Move cursor left in the buffer
+                        printf("\b"); // Move cursor left on screen
+                        fflush(stdout);
+                    }
+                } else if (arrow == 'C') { // Right arrow
+                    if (pos < strlen(input)) {
+                        printf("%c", input[pos]); // Move cursor right on screen
+                        fflush(stdout);
+                        pos++; // Move cursor right in the buffer
+                    }
+                }
+            } else if (c == '\x7F') { // Backspace key
+                if (pos > 0) {
+                    pos--;
+                    input[pos] = '\0';
+                    printf("\b \b"); // Erase character from terminal
+                    fflush(stdout);
+                }
+            } else { // Regular character input
+                input[pos++] = c;
+                putchar(c);
+                fflush(stdout);
+            }
+        }
+
+        if (strcmp(input, "exit") == 0) break; // Exit command
+
+        printf("\n"); // Add a newline before processing the command output
+        process_input(input); // Process the user input
     }
+
+    disable_raw_mode(); // Restore terminal settings before exiting
     return 0;
 }
