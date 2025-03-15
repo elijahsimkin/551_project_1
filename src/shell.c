@@ -6,12 +6,14 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <termios.h>
+#include <signal.h>
 
 #define MAX_ARGS 128
 #define MAX_JOBS 64
 #define PIPE_READ 0
 #define PIPE_WRITE 1
 #define MAX_HISTORY 100
+#define MAX_INPUT 1024
 
 typedef struct {
     int job_id;
@@ -26,6 +28,21 @@ int job_count = 0;
 char history[MAX_HISTORY][1024];
 int history_index = 0;
 int history_pos = -1;
+
+/* Global flag to track if a foreground process is running */
+pid_t foreground_pid = -1;
+
+void sigint_handler(int sig) {
+    if (foreground_pid > 0) {
+        /* If a foreground process is running, send SIGINT to it */
+        kill(foreground_pid, SIGINT);
+    } else {
+        /* Print a new prompt instead of terminating the shell */
+        printf("\n");
+        printf("shell> ");
+        fflush(stdout);
+    }
+}
 
 void add_job(pid_t pid, char *command) {
     if (job_count < MAX_JOBS) {
@@ -73,18 +90,18 @@ void foreground_job(int job_id) {
     printf("fg: job %d not found\n", job_id);
 }
 
-//function to handle cd
+/*function to handle cd*/
 void handle_cd(char **args) {
     const char *home; 
     if (args[1] == NULL) {
-        // Change to home directory if no argument is provided
+        /* Change to home directory if no argument is provided */
         home = getenv("HOME");
-        if (home == NULL) home = "/";  // Fallback to root if HOME is not set
+        if (home == NULL) home = "/";  /* Fallback to root if HOME is not set */
         if (chdir(home) != 0) {
             perror("cd failed");
         }
     } else {
-        // Change to specified directory
+        /* Change to specified directory
         if (chdir(args[1]) != 0) {
             perror("cd failed");
         }
@@ -94,7 +111,7 @@ void handle_cd(char **args) {
 
 void execute_command(char *command, char **args, int input_fd, int output_fd, int background) {
     pid_t pid = fork();
-    if (pid == 0) { // Child process
+    if (pid == 0) { /* Child process
         if (input_fd != STDIN_FILENO) {
             dup2(input_fd, STDIN_FILENO);
             close(input_fd);
@@ -103,15 +120,26 @@ void execute_command(char *command, char **args, int input_fd, int output_fd, in
             dup2(output_fd, STDOUT_FILENO);
             close(output_fd);
         }
+
+        /* Restore default Ctrl+C behavior for child processes */
+        signal(SIGINT, SIG_DFL);
+
         execvp(command, args);
         perror("execvp failed");
         _exit(1);
-    } else if (pid > 0) { // Parent process
+    } else if (pid > 0) { /* Parent process  */
         if (input_fd != STDIN_FILENO) close(input_fd);
         if (output_fd != STDOUT_FILENO) close(output_fd);
         
         if (!background) {
+             /* Track foreground process */
+            foreground_pid = pid;
+
+            /* Wait for foreground process to finish */
+            
             waitpid(pid, NULL, 0);
+            /* Reset foreground process tracking */
+            foreground_pid = -1;
         } else {
             add_job(pid, command);
             printf("[Job %d] Started: %s (PID: %d)\n", job_count, command, pid);
@@ -136,6 +164,15 @@ void process_input(char *input) {
 
     check_jobs();
 
+    /* Check if input exceeds 1024 characters */
+    if (strlen(input) >= MAX_INPUT - 1) {
+        printf("Error: Input exceeds 1024 characters! Command ignored.\n");
+        return;
+    }
+
+    /* Ignore empty inputs */
+    if (strlen(input) == 0) return;
+
     if (strncmp(input, "jobs", 4) == 0) {
         list_jobs();
         return;
@@ -146,7 +183,7 @@ void process_input(char *input) {
         return;
     }
 
-    // Add to history
+    /* Add to history  */
     strncpy(history[history_index % MAX_HISTORY], input, sizeof(history[history_index % MAX_HISTORY]) - 1);
     history_index++;
     history_pos = history_index;
@@ -198,7 +235,7 @@ void process_input(char *input) {
             args[arg_count] = NULL;
         }
 
-        //handle cd
+        /* handle cd  */
         if (strcmp(args[0], "cd") == 0) {
             handle_cd(args);
             return;
@@ -207,11 +244,11 @@ void process_input(char *input) {
         if (i < command_count - 1) {
             pipe(pipe_fd);
             execute_command(command, args, input_fd, pipe_fd[PIPE_WRITE], background_flags[i]);
-            close(pipe_fd[PIPE_WRITE]); // Close write end in parent
-            input_fd = pipe_fd[PIPE_READ]; // Pass read end to next command
+            close(pipe_fd[PIPE_WRITE]); /* Close write end in parent  */
+            input_fd = pipe_fd[PIPE_READ]; /* Pass read end to next command  */
         } else {
             execute_command(command, args, input_fd, output_fd, background_flags[i]);
-            if (input_fd != STDIN_FILENO) close(input_fd); // Close last input_fd
+            if (input_fd != STDIN_FILENO) close(input_fd); /* Close last input_fd  */
         }
     }
     if (output_fd != STDOUT_FILENO) close(output_fd);
@@ -241,7 +278,10 @@ int main() {
     char input[1024];
     int pos;
     char c, arrow;
-    enable_raw_mode(); // Enable raw mode for handling arrow keys
+    char input[MAX_INPUT + 1];
+
+    signal(SIGINT,sigint_handler);
+    enable_raw_mode(); /* Enable raw mode for handling arrow keys  */
 
     while (1) {
         printf("shell> ");
@@ -253,67 +293,76 @@ int main() {
         while (1) {
             c = getchar();
 
-            if (c == '\n') { // Enter key
+            if (c == '\n') { /* Enter key  */
                 input[pos] = '\0';
                 break;
-            } else if (c == '\x1B') { // Escape sequence for arrow keys
-                getchar(); // Skip '['
+            } else if (c == EOF) { 
+                printf("\n");
+                exit(0); /* Handle Ctrl+D (EOF) */
+            } else if (pos >= MAX_INPUT) {
+                /* If input exceeds limit, flush excess characters */
+                while (getchar() != '\n'); /* Discard rest of line */
+                printf("\nError: Input exceeds %d characters! Command ignored.\n", MAX_INPUT);
+                continue; /* Skip `process_input()` */
+            } else if (c == '\x1B') { /* Escape sequence for arrow keys
+                getchar(); /* Skip '['  */
                 arrow = getchar();
-                if (arrow == 'A') { // Up arrow
+                if (arrow == 'A') { /* Up arrow  */
                     if (history_pos > 0) {
                         history_pos--;
                         strcpy(input, history[history_pos % MAX_HISTORY]);
-                        printf("\r\033[Kshell> %s", input); // Clear line and print history
+                        printf("\r\033[Kshell> %s", input); /* Clear line and print history */
                         fflush(stdout);
                         pos = strlen(input);
                     }
-                } else if (arrow == 'B') { // Down arrow
+                } else if (arrow == 'B') { /* Down arrow  */
                     if (history_pos < history_index - 1) {
                         history_pos++;
                         strcpy(input, history[history_pos % MAX_HISTORY]);
-                        printf("\r\033[Kshell> %s", input); // Clear line and print history
+                        printf("\r\033[Kshell> %s", input); /* Clear line and print history  */
                         fflush(stdout);
                         pos = strlen(input);
                     } else {
-                        history_pos = history_index; // Reset to end of history
+                        history_pos = history_index; /* Reset to end of history */
                         memset(input, 0, sizeof(input));
-                        printf("\r\033[Kshell> "); // Clear line
+                        printf("\r\033[Kshell> "); /* Clear line */
                         fflush(stdout);
                         pos = 0;
                     }
-                } else if (arrow == 'D') { // Left arrow
+                } else if (arrow == 'D') { /* Left arrow  */
                     if (pos > 0) {
-                        pos--; // Move cursor left in the buffer
-                        printf("\b"); // Move cursor left on screen
+                        pos--; /* Move cursor left in the buffer */
+                        printf("\b"); /* Move cursor left on screen */
                         fflush(stdout);
                     }
-                } else if (arrow == 'C') { // Right arrow
+                } else if (arrow == 'C') { /* Right arrow */
                     if (pos < strlen(input)) {
-                        printf("%c", input[pos]); // Move cursor right on screen
+                        printf("%c", input[pos]); /* Move cursor right on screen */
                         fflush(stdout);
-                        pos++; // Move cursor right in the buffer
+                        pos++; /* Move cursor right in the buffer */
                     }
                 }
-            } else if (c == '\x7F') { // Backspace key
+            } else if (c == '\x7F') { /* Backspace key */
                 if (pos > 0) {
                     pos--;
                     input[pos] = '\0';
-                    printf("\b \b"); // Erase character from terminal
+                    printf("\b \b"); /* Erase character from terminal */
                     fflush(stdout);
                 }
-            } else { // Regular character input
+            } else { /* Regular character input */
                 input[pos++] = c;
                 putchar(c);
                 fflush(stdout);
             }
         }
 
-        if (strcmp(input, "exit") == 0) break; // Exit command
+        if (pos == 0) continue; /* Ignore empty input */
+        if (strcmp(input, "exit") == 0) break; /* Exit command  */
 
-        printf("\n"); // Add a newline before processing the command output
-        process_input(input); // Process the user input
+        printf("\n"); /* Add a newline before processing the command output  */
+        process_input(input); /* Process the user input  */
     }
 
-    disable_raw_mode(); // Restore terminal settings before exiting
+    disable_raw_mode(); /* Restore terminal settings before exiting  */
     return 0;
 }
