@@ -57,9 +57,9 @@ void add_job(pid_t pid, char *command) {
 
 void check_jobs() {
     int i;
+    int status;
     for (i = 0; i < job_count; i++) {
         if (jobs[i].active) {
-            int status;
             pid_t result = waitpid(jobs[i].pid, &status, WNOHANG);
             if (result > 0) {
                 printf("[Job %d] Done: %s\n", jobs[i].job_id, jobs[i].command);
@@ -159,7 +159,7 @@ void process_input(char *input) {
     int input_fd ;
     int pipe_fd[2];
 
-    char *token, *command = NULL, *args[MAX_ARGS];
+    char *token, *command, *args[MAX_ARGS];
     int arg_count;
     char *cmd_ptr;
 
@@ -225,6 +225,7 @@ void process_input(char *input) {
     input_fd = STDIN_FILENO;
     
     for (i = 0; i < command_count; i++) {
+        *command = NULL;
         arg_count = 0;
         
         *cmd_ptr = commands[i];
