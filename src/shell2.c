@@ -162,6 +162,7 @@ void process_input(char *input) {
     char *token, *command, *args[MAX_ARGS];
     int arg_count;
     char *cmd_ptr;
+    char *filename;
 
     check_jobs();
 
@@ -193,7 +194,6 @@ void process_input(char *input) {
     command_count = 0;
     background_flags[MAX_ARGS] = 0;
     output_fd = STDOUT_FILENO;
-    char *filename;
 
     while (*ptr) {
         while (*ptr == ' ' || *ptr == '\t') ptr++;
