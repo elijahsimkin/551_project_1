@@ -52,18 +52,16 @@ static char *skipWhitespaceAndPipes(char *ptr) {
     return ptr;
 }
 
-static char *handleRedirection(char *ptr, int *backgroundFlag, int *output_fd) {
+static char *handleRedirection(char *ptr, int *backgroundFlag, int *output_fd, int *input_fd) {
     char special = *ptr;
-    char *filename; 
+    char *filename;
     *ptr = '\0';
     ptr++;
-    
-    if (special == SPECIAL_REDIR) {
+
+    if (special == '>') {  
         ptr = skipWhitespace(ptr);
         filename = ptr;
-        while (*ptr && *ptr != ' ' && *ptr != '\t') {
-            ptr++;
-        }
+        while (*ptr && *ptr != ' ' && *ptr != '\t') ptr++;
         if (*ptr) {
             *ptr = '\0';
             ptr++;
@@ -72,7 +70,19 @@ static char *handleRedirection(char *ptr, int *backgroundFlag, int *output_fd) {
         if (*output_fd < 0) {
             perror("open failed");
         }
-    } else if (special == SPECIAL_BG) {
+    } else if (special == '<') {  
+        ptr = skipWhitespace(ptr);
+        filename = ptr;
+        while (*ptr && *ptr != ' ' && *ptr != '\t') ptr++;
+        if (*ptr) {
+            *ptr = '\0';
+            ptr++;
+        }
+        *input_fd = open(filename, O_RDONLY);
+        if (*input_fd < 0) {
+            perror("open failed");
+        }
+    } else if (special == '&') {
         *backgroundFlag = 1;
     }
     return ptr;
@@ -189,8 +199,9 @@ int tokenizeCommand(char *commandStr, char **tokens) {
     return count;
 }
 
-void executeCommands(char **commands, int commandCount, int *backgroundFlags, int output_fd) {
-    int in_fd = STDIN_FILENO, pipe_fd[2], i;
+void executeCommands(char **commands, int commandCount, int *backgroundFlags, int output_fd, int input_fd) {
+    int in_fd = input_fd, pipe_fd[2];  
+    int i;
     for (i = 0; i < commandCount; i++) {
         char *args[MAX_ARGS];
         tokenizeCommand(commands[i], args);
@@ -208,7 +219,7 @@ void executeCommands(char **commands, int commandCount, int *backgroundFlags, in
     }
 }
 
-char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
+char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd, int *input_fd) {
     char *end;
     segment = skipWhitespace(segment);
     end = segment;
@@ -216,22 +227,23 @@ char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
         end++;
     }
     if (*end) {
-        end = handleRedirection(end, backgroundFlag, output_fd);
+        end = handleRedirection(end, backgroundFlag, output_fd, input_fd);
     }
     return end;
 }
 
-int parseInputLine(char *input, char **commands, int *backgroundFlags, int *output_fd) {
+int parseInputLine(char *input, char **commands, int *backgroundFlags, int *output_fd, int *input_fd) {
     int count = 0;
     char *ptr = input;
     *output_fd = STDOUT_FILENO;
+    *input_fd = STDIN_FILENO;  
 
     while (*ptr) {
         ptr = skipWhitespace(ptr);
         if (!*ptr) break;
         commands[count] = ptr;
         backgroundFlags[count] = 0;
-        ptr = parseCommandSegment(ptr, &backgroundFlags[count], output_fd);
+        ptr = handleRedirection(ptr, &backgroundFlags[count], output_fd, input_fd);
         count++;
         ptr = skipWhitespaceAndPipes(ptr);
     }
@@ -239,33 +251,17 @@ int parseInputLine(char *input, char **commands, int *backgroundFlags, int *outp
     return count;
 }
 
+
 void processInput(char *input) {
-    int job_id;
-    char *args[MAX_ARGS], *commands[MAX_ARGS];
+    char *commands[MAX_ARGS];
     int backgroundFlags[MAX_ARGS] = {0};
-    int output_fd, commandCount;
+    int output_fd, input_fd;
+    int commandCount = parseInputLine(input, commands, backgroundFlags, &output_fd, &input_fd);
 
-    updateJobStatus();
+    executeCommands(commands, commandCount, backgroundFlags, output_fd, input_fd);
 
-    if (strncmp(input, "jobs", 4) == 0) {
-        displayJobs();
-        return;
-    }
-    if (strncmp(input, "fg", 2) == 0) {
-        job_id = atoi(input + 3);
-        bringJobToForeground(job_id);
-        return;
-    }
-    if (strncmp(input, "cd", 2) == 0) {
-        tokenizeCommand(input, args);
-        handle_cd(args);
-        return;
-    }
-    
-    commandCount = parseInputLine(input, commands, backgroundFlags, &output_fd);
-
-    executeCommands(commands, commandCount, backgroundFlags, output_fd);
     if (output_fd != STDOUT_FILENO) close(output_fd);
+    if (input_fd != STDIN_FILENO) close(input_fd);  
 }
 
 int main() {
