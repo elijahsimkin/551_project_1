@@ -56,7 +56,8 @@ void add_job(pid_t pid, char *command) {
 }
 
 void check_jobs() {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active) {
             int status;
             pid_t result = waitpid(jobs[i].pid, &status, WNOHANG);
@@ -69,7 +70,8 @@ void check_jobs() {
 }
 
 void list_jobs() {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active) {
             printf("[Job %d] Running: %s (PID: %d)\n", jobs[i].job_id, jobs[i].command, jobs[i].pid);
         }
@@ -77,7 +79,8 @@ void list_jobs() {
 }
 
 void foreground_job(int job_id) {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active && jobs[i].job_id == job_id) {
             printf("Bringing job %d to foreground: %s\n", job_id, jobs[i].command);
             waitpid(jobs[i].pid, NULL, 0);
@@ -207,7 +210,8 @@ void process_input(char *input) {
     int input_fd = STDIN_FILENO;
     int pipe_fd[2];
     
-    for (int i = 0; i < command_count; i++) {
+    int i;
+    for (i = 0; i < command_count; i++) {
         char *token, *command = NULL, *args[MAX_ARGS];
         int arg_count = 0;
         
