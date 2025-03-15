@@ -325,9 +325,10 @@ int main() {
                 }
             } else if (c == '\x7F') {  
                 if (pos > 0) {
-                    pos--;
-                    input[pos] = '\0';
-                    printf("\b \b");
+                    pos--; 
+                    memmove(&input[pos], &input[pos + 1], strlen(input) - pos); 
+                    printf("\b \033[K");  
+                    printf("\r\033[Kshell> %s", input);  
                     fflush(stdout);
                 }
             } else {  
