@@ -5,6 +5,15 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <termios.h>
+#include <signal.h>
+
+#define MAX_ARGS 128
+#define MAX_JOBS 64
+#define PIPE_READ 0
+#define PIPE_WRITE 1
+#define MAX_HISTORY 100
+#define MAX_INPUT 1024
 #define SPECIAL_PIPE '|' 
 #define SPECIAL_REDIR '>'
 #define SPECIAL_BG '&'
@@ -79,10 +88,9 @@ void addJob(pid_t pid, const char *cmd) {
 }
 
 void updateJobStatus(void) {
-    int i;
+    int i,status;
     for  (i = 0; i < job_count; i++) {
         if (jobs[i].active) {
-            int status;
             if (waitpid(jobs[i].pid, &status, WNOHANG) > 0) {
                 printf("[Job %d] Done: %s\n", jobs[i].job_id, jobs[i].command);
                 jobs[i].active = 0;
@@ -92,14 +100,16 @@ void updateJobStatus(void) {
 }
 
 void displayJobs(void) {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active)
             printf("[Job %d] Running: %s (PID: %d)\n", jobs[i].job_id, jobs[i].command, jobs[i].pid);
     }
 }
 
 void bringJobToForeground(int job_id) {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active && jobs[i].job_id == job_id) {
             printf("Bringing job %d to foreground: %s\n", job_id, jobs[i].command);
             waitpid(jobs[i].pid, NULL, 0);
@@ -169,7 +179,7 @@ int tokenizeCommand(char *commandStr, char **tokens) {
 }
 
 void executeCommands(char **commands, int commandCount, int *backgroundFlags, int output_fd) {
-    int in_fd = STDIN_FILENO, pipe_fd[2],i;
+    int in_fd = STDIN_FILENO, pipe_fd[2], i;
     char *args[MAX_ARGS];
     for (i = 0; i < commandCount; i++) {
         /*Tokenize the current command segment */
@@ -192,10 +202,10 @@ char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
     char *end;
     segment = skipWhitespace(segment);
     end = segment;
-    while (*end && *end != SPECIAL_PIPE && *end != SPECIAL_REDIR && *end != SPECIAL_BG) {
+    while (end && end != SPECIAL_PIPE && end != SPECIAL_REDIR && end != SPECIAL_BG) {
         end++;
     }
-    if (*end) {
+    if (end) {
         end = handleRedirection(end, backgroundFlag, output_fd);
     }
     return end;
@@ -204,8 +214,8 @@ char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
 /*Parse the full input line into command segments, background flags, and output redirection */
 int parseInputLine(char *input, char **commands, int *backgroundFlags, int *output_fd) {
     int count = 0;
-    *output_fd = STDOUT_FILENO;
     char *ptr = input;
+    *output_fd = STDOUT_FILENO;
 
     while (*ptr) {
         ptr = skipWhitespace(ptr);
@@ -227,8 +237,7 @@ void processInput(char *input) {
     char *commands[MAX_ARGS];
     int backgroundFlags[MAX_ARGS] = {0};
     int output_fd;
-    int commandCount = parseInputLine(input, commands, backgroundFlags, &output_fd);
-
+    int commandCount ;
     updateJobStatus();
 
     if (strncmp(input, "jobs", 4) == 0) {
@@ -247,7 +256,8 @@ void processInput(char *input) {
         return;
     }
 
-    
+    commandCount = parseInputLine(input, commands, backgroundFlags, &output_fd);
+
     executeCommands(commands, commandCount, backgroundFlags, output_fd);
     if (output_fd != STDOUT_FILENO) close(output_fd);
 }
