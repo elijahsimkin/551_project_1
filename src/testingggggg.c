@@ -243,7 +243,7 @@ int parseInputLine(char *input, char **commands, int *backgroundFlags, int *outp
         if (!*ptr) break;
         commands[count] = ptr;
         backgroundFlags[count] = 0;
-        ptr = handleRedirection(ptr, &backgroundFlags[count], output_fd, input_fd);
+        ptr = handleRedirection(ptr, &backgroundFlags[count], &output_fd, &input_fd);
         count++;
         ptr = skipWhitespaceAndPipes(ptr);
     }
