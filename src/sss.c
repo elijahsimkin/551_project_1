@@ -202,10 +202,10 @@ char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
     char *end;
     segment = skipWhitespace(segment);
     end = segment;
-    while (end && end != SPECIAL_PIPE && end != SPECIAL_REDIR && end != SPECIAL_BG) {
+     while (*end && *end != SPECIAL_PIPE && *end != SPECIAL_REDIR && *end != SPECIAL_BG) {
         end++;
     }
-    if (end) {
+    if (*end) {
         end = handleRedirection(end, backgroundFlag, output_fd);
     }
     return end;
