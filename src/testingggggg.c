@@ -38,14 +38,14 @@ void printCommand(const char *cmd, int *pos) {
     *pos = strlen(cmd);
 }
 
-static inline char *skipWhitespace(char *ptr) {
+static char *skipWhitespace(char *ptr) {
     while (*ptr == ' ' || *ptr == '\t') {
         ptr++;
     }
     return ptr;
 }
 
-static inline char *skipWhitespaceAndPipes(char *ptr) {
+static char *skipWhitespaceAndPipes(char *ptr) {
     while (*ptr == ' ' || *ptr == '\t' || *ptr == '|') {
         ptr++;
     }
