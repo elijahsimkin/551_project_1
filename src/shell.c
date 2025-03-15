@@ -39,9 +39,9 @@ void add_job(pid_t pid, char *command) {
 }
 
 void check_jobs() {
-    for (int i = 0; i < job_count; i++) {
+    int i, status;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active) {
-            int status;
             pid_t result = waitpid(jobs[i].pid, &status, WNOHANG);
             if (result > 0) {
                 printf("[Job %d] Done: %s\n", jobs[i].job_id, jobs[i].command);
@@ -52,7 +52,8 @@ void check_jobs() {
 }
 
 void list_jobs() {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active) {
             printf("[Job %d] Running: %s (PID: %d)\n", jobs[i].job_id, jobs[i].command, jobs[i].pid);
         }
@@ -60,7 +61,8 @@ void list_jobs() {
 }
 
 void foreground_job(int job_id) {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active && jobs[i].job_id == job_id) {
             printf("Bringing job %d to foreground: %s\n", job_id, jobs[i].command);
             waitpid(jobs[i].pid, NULL, 0);
@@ -73,9 +75,10 @@ void foreground_job(int job_id) {
 
 //function to handle cd
 void handle_cd(char **args) {
+    const char *home; 
     if (args[1] == NULL) {
         // Change to home directory if no argument is provided
-        const char *home = getenv("HOME");
+        home = getenv("HOME");
         if (home == NULL) home = "/";  // Fallback to root if HOME is not set
         if (chdir(home) != 0) {
             perror("cd failed");
@@ -117,6 +120,20 @@ void execute_command(char *command, char **args, int input_fd, int output_fd, in
 }
 
 void process_input(char *input) {
+    char *commands[MAX_ARGS];
+    int command_count = 0;
+    int background_flags[MAX_ARGS] = {0};
+    int output_fd = STDOUT_FILENO;
+    char *ptr;
+
+    int input_fd = STDIN_FILENO;
+    int pipe_fd[2], i;
+
+    char *token, *command = NULL, *args[MAX_ARGS];
+    int arg_count = 0;
+
+    char *cmd_ptr = NULL;
+
     check_jobs();
 
     if (strncmp(input, "jobs", 4) == 0) {
@@ -133,13 +150,8 @@ void process_input(char *input) {
     strncpy(history[history_index % MAX_HISTORY], input, sizeof(history[history_index % MAX_HISTORY]) - 1);
     history_index++;
     history_pos = history_index;
-    
-    char *commands[MAX_ARGS];
-    int command_count = 0;
-    int background_flags[MAX_ARGS] = {0};
-    int output_fd = STDOUT_FILENO;
 
-    char *ptr = input;
+    ptr = input;
     while (*ptr) {
         while (*ptr == ' ' || *ptr == '\t') ptr++;
         if (!*ptr) break;
@@ -167,15 +179,10 @@ void process_input(char *input) {
         command_count++;
     }
     commands[command_count] = NULL;
-
-    int input_fd = STDIN_FILENO;
-    int pipe_fd[2];
     
-    for (int i = 0; i < command_count; i++) {
-        char *token, *command = NULL, *args[MAX_ARGS];
-        int arg_count = 0;
+    for (i = 0; i < command_count; i++) {
         
-        char *cmd_ptr = commands[i];
+        cmd_ptr = commands[i];
         while (*cmd_ptr) {
             while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
             if (!*cmd_ptr) break;
@@ -232,24 +239,26 @@ void disable_raw_mode() {
 
 int main() {
     char input[1024];
+    int pos;
+    char c, arrow;
     enable_raw_mode(); // Enable raw mode for handling arrow keys
 
     while (1) {
         printf("shell> ");
         fflush(stdout);
 
-        int pos = 0;
+        pos = 0;
         memset(input, 0, sizeof(input));
 
         while (1) {
-            char c = getchar();
+            c = getchar();
 
             if (c == '\n') { // Enter key
                 input[pos] = '\0';
                 break;
             } else if (c == '\x1B') { // Escape sequence for arrow keys
                 getchar(); // Skip '['
-                char arrow = getchar();
+                arrow = getchar();
                 if (arrow == 'A') { // Up arrow
                     if (history_pos > 0) {
                         history_pos--;
