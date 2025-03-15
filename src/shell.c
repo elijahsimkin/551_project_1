@@ -162,6 +162,8 @@ void process_input(char *input) {
 
     char *cmd_ptr = NULL;
 
+    char *filename = NULL;
+
     check_jobs();
 
     /* Check if input exceeds 1024 characters */
@@ -201,7 +203,7 @@ void process_input(char *input) {
         } else if (*ptr == '>') {
             *ptr++ = '\0';
             while (*ptr == ' ' || *ptr == '\t') ptr++;
-            char *filename = ptr;
+            filename = ptr;
             while (*ptr && *ptr != ' ' && *ptr != '\t') ptr++;
             if (*ptr) *ptr++ = '\0';
             output_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
