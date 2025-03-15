@@ -191,7 +191,7 @@ void executeCommands(char **commands, int commandCount, int *backgroundFlags, in
 char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
     char *end;
     segment = skipWhitespace(segment);
-    *end = segment;
+    end = segment;
     while (*end && *end != SPECIAL_PIPE && *end != SPECIAL_REDIR && *end != SPECIAL_BG) {
         end++;
     }
