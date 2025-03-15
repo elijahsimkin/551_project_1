@@ -173,7 +173,8 @@ void process_input(char *input) {
     history_index++;
     history_pos = history_index;
     
-    char *commands[MAX_ARGS];
+    char cmds[MAX_ARGS];
+    char *commands=cmds;
     int command_count = 0;
     int background_flags[MAX_ARGS] = {0};
     int output_fd = STDOUT_FILENO;
@@ -280,7 +281,8 @@ int main() {
         printf("shell> ");
         fflush(stdout);
 
-        int pos = 0;
+        int pos;
+        pos =0;
         memset(input, 0, sizeof(input));
 
         while (1) {
@@ -299,7 +301,8 @@ int main() {
                 continue; /* Skip `process_input()` */
             } else if (c == '\x1B') { /* Escape sequence for arrow keys */
                 getchar(); /* Skip '[' */
-                char arrow = getchar();
+                char arrow;
+                arrow = getchar();
                 if (arrow == 'A') { /* Up arrow */
                     if (history_pos > 0) {
                         history_pos--;
