@@ -13,26 +13,26 @@
 #define MAX_INPUT 1024
 #define MAX_HISTORY 100
 
-char history[MAX_HISTORY][MAX_INPUT];  // Command history buffer
-int history_index = 0;  // Number of commands in history
-int history_pos = -1;   // Position of currently viewed history item
+char history[MAX_HISTORY][MAX_INPUT];  
+int history_index = 0;  
+int history_pos = -1;   
 
 void enableRawMode() {
     struct termios term;
     tcgetattr(STDIN_FILENO, &term);
-    term.c_lflag &= ~(ICANON | ECHO);  // Disable canonical mode and echo
+    term.c_lflag &= ~(ICANON | ECHO);  
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
 }
 
 void disableRawMode() {
     struct termios term;
     tcgetattr(STDIN_FILENO, &term);
-    term.c_lflag |= (ICANON | ECHO);  // Re-enable canonical mode and echo
+    term.c_lflag |= (ICANON | ECHO);  
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
 }
 
 void printCommand(const char *cmd, int *pos) {
-    printf("\r\033[K"); // Clear line
+    printf("\r\033[K"); 
     printf("shell> %s", cmd);
     fflush(stdout);
     *pos = strlen(cmd);
@@ -53,7 +53,6 @@ static inline char *skipWhitespaceAndPipes(char *ptr) {
 }
 
 static char *handleRedirection(char *ptr, int *backgroundFlag, int *output_fd) {
-    /* Capture the special character and terminate the current token */
     char special = *ptr;
     *ptr = '\0';
     ptr++;
@@ -83,7 +82,6 @@ static char *handleRedirection(char *ptr, int *backgroundFlag, int *output_fd) {
 #define PIPE_READ  0
 #define PIPE_WRITE 1
 
-// Job structure and globals
 typedef struct {
     int job_id;
     pid_t pid;
@@ -94,7 +92,6 @@ typedef struct {
 Job jobs[MAX_JOBS];
 int job_count = 0;
 
-// Job management routines
 void addJob(pid_t pid, const char *cmd) {
     if (job_count < MAX_JOBS) {
         jobs[job_count].job_id = job_count + 1;
@@ -137,28 +134,23 @@ void bringJobToForeground(int job_id) {
     printf("fg: job %d not found\n", job_id);
 }
 
-//function to handle cd
 void handle_cd(char **args) {
     if (args[1] == NULL) {
-        // Change to home directory if no argument is provided
         const char *home = getenv("HOME");
-        if (home == NULL) home = "/";  // Fallback to root if HOME is not set
+        if (home == NULL) home = "/";  
         if (chdir(home) != 0) {
             perror("cd failed");
         }
     } else {
-        // Change to specified directory
         if (chdir(args[1]) != 0) {
             perror("cd failed");
         }
     }
 }
 
-
-// Command execution wrapper
 void runCommand(const char *command, char **args, int in_fd, int out_fd, int background) {
     pid_t pid = fork();
-    if (pid == 0) { // Child process
+    if (pid == 0) { 
         if (in_fd != STDIN_FILENO) {
             dup2(in_fd, STDIN_FILENO);
             close(in_fd);
@@ -170,7 +162,7 @@ void runCommand(const char *command, char **args, int in_fd, int out_fd, int bac
         execvp(command, args);
         perror("execvp failed");
         _exit(1);
-    } else if (pid > 0) { // Parent process
+    } else if (pid > 0) { 
         if (in_fd != STDIN_FILENO) close(in_fd);
         if (out_fd != STDOUT_FILENO) close(out_fd);
         if (!background) {
@@ -182,7 +174,6 @@ void runCommand(const char *command, char **args, int in_fd, int out_fd, int bac
     }
 }
 
-// Tokenize a single command into arguments (no triple nesting here)
 int tokenizeCommand(char *commandStr, char **tokens) {
     int count = 0;
     char *token = strtok(commandStr, " \t");
@@ -198,7 +189,6 @@ void executeCommands(char **commands, int commandCount, int *backgroundFlags, in
     int in_fd = STDIN_FILENO, pipe_fd[2];
     for (int i = 0; i < commandCount; i++) {
         char *args[MAX_ARGS];
-        // Tokenize the current command segment
         tokenizeCommand(commands[i], args);
         if (i < commandCount - 1) {
             if (pipe(pipe_fd) < 0) {
@@ -226,7 +216,6 @@ char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
     return end;
 }
 
-// Parse the full input line into command segments, background flags, and output redirection
 int parseInputLine(char *input, char **commands, int *backgroundFlags, int *output_fd) {
     int count = 0;
     *output_fd = STDOUT_FILENO;
@@ -245,7 +234,6 @@ int parseInputLine(char *input, char **commands, int *backgroundFlags, int *outp
     return count;
 }
 
-// Process and execute the parsed input line
 void processInput(char *input) {
     updateJobStatus();
 
@@ -291,22 +279,22 @@ int main() {
         while (1) {
             c = getchar();
 
-            if (c == '\n') {  // Enter key
+            if (c == '\n') {  
                 input[pos] = '\0';
                 break;
             } else if (c == EOF) {
                 printf("\n");
-                exit(0);  // Handle Ctrl+D (EOF)
-            } else if (c == '\x1B') {  // Escape sequence for arrow keys
-                getchar();  // Skip '['
+                exit(0);  
+            } else if (c == '\x1B') {  
+                getchar();  
                 arrow = getchar();
-                if (arrow == 'A') {  // Up arrow
+                if (arrow == 'A') {  
                     if (history_pos > 0) {
                         history_pos--;
                         strcpy(input, history[history_pos]);
                         printCommand(input, &pos);
                     }
-                } else if (arrow == 'B') {  // Down arrow
+                } else if (arrow == 'B') {  
                     if (history_pos < history_index - 1) {
                         history_pos++;
                         strcpy(input, history[history_pos]);
@@ -316,37 +304,36 @@ int main() {
                         memset(input, 0, sizeof(input));
                         printCommand("", &pos);
                     }
-                } else if (arrow == 'D') {  // Left arrow
+                } else if (arrow == 'D') {  
                     if (pos > 0) {
                         pos--;
                         printf("\b");
                         fflush(stdout);
                     }
-                } else if (arrow == 'C') {  // Right arrow
+                } else if (arrow == 'C') {  
                     if (pos < strlen(input)) {
                         printf("%c", input[pos]);
                         fflush(stdout);
                         pos++;
                     }
                 }
-            } else if (c == '\x7F') {  // Backspace key
+            } else if (c == '\x7F') {  
                 if (pos > 0) {
                     pos--;
                     input[pos] = '\0';
                     printf("\b \b");
                     fflush(stdout);
                 }
-            } else {  // Regular character input
+            } else {  
                 input[pos++] = c;
                 putchar(c);
                 fflush(stdout);
             }
         }
 
-        if (pos == 0) continue;  // Ignore empty input
-        if (strcmp(input, "exit") == 0) break;  // Exit command
+        if (pos == 0) continue;  
+        if (strcmp(input, "exit") == 0) break;  
 
-        // Store command in history
         strncpy(history[history_index % MAX_HISTORY], input, MAX_INPUT - 1);
         history_index++;
         history_pos = history_index;
