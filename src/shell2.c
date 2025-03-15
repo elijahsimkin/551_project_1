@@ -148,6 +148,21 @@ void execute_command(char *command, char **args, int input_fd, int output_fd, in
 
 void process_input(char *input) {
     int i;
+    char cmds[MAX_ARGS];
+    char *commands;
+    int command_count;
+    int background_flags[MAX_ARGS];
+    int output_fd;
+
+    char *ptr = input;
+
+    int input_fd ;
+    int pipe_fd[2];
+
+    char *token, *command = NULL, *args[MAX_ARGS];
+    int arg_count;
+    char *cmd_ptr;
+
     check_jobs();
 
     /* Check if input exceeds 1024 characters */
@@ -174,13 +189,11 @@ void process_input(char *input) {
     history_index++;
     history_pos = history_index;
     
-    char cmds[MAX_ARGS];
-    char *commands = cmds;
-    int command_count = 0;
-    int background_flags[MAX_ARGS] = {0};
-    int output_fd = STDOUT_FILENO;
+    *commands = cmds;
+    command_count = 0;
+    background_flags[MAX_ARGS] = 0;
+    output_fd = STDOUT_FILENO;
 
-    char *ptr = input;
     while (*ptr) {
         while (*ptr == ' ' || *ptr == '\t') ptr++;
         if (!*ptr) break;
@@ -209,14 +222,12 @@ void process_input(char *input) {
     }
     commands[command_count] = NULL;
 
-    int input_fd = STDIN_FILENO;
-    int pipe_fd[2];
+    input_fd = STDIN_FILENO;
     
     for (i = 0; i < command_count; i++) {
-        char *token, *command = NULL, *args[MAX_ARGS];
-        int arg_count = 0;
+        arg_count = 0;
         
-        char *cmd_ptr = commands[i];
+        *cmd_ptr = commands[i];
         while (*cmd_ptr) {
             while (*cmd_ptr == ' ' || *cmd_ptr == '\t') cmd_ptr++;
             if (!*cmd_ptr) break;
@@ -273,6 +284,9 @@ void disable_raw_mode() {
 
 int main() {
     char input[MAX_INPUT + 1];
+    int pos;
+    char c;
+    char arrow; 
     enable_raw_mode(); /* Enable raw mode for handling arrow keys */
 
     signal(SIGINT, sigint_handler); /* Register Ctrl+C handler */
@@ -281,11 +295,11 @@ int main() {
         printf("shell> ");
         fflush(stdout);
 
-        int pos = 0;
+        pos = 0;
         memset(input, 0, sizeof(input));
 
         while (1) {
-            char c = getchar();
+            c = getchar();
 
             if (c == '\n') { /* Enter key */
                 input[pos] = '\0';
@@ -300,7 +314,7 @@ int main() {
                 continue; /* Skip `process_input()` */
             } else if (c == '\x1B') { /* Escape sequence for arrow keys */
                 getchar(); /* Skip '[' */
-                char arrow = getchar();
+                arrow = getchar();
                 if (arrow == 'A') { /* Up arrow */
                     if (history_pos > 0) {
                         history_pos--;
