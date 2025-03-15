@@ -104,7 +104,8 @@ void addJob(pid_t pid, const char *cmd) {
 }
 
 void updateJobStatus(void) {
-    for (int i = 0; i < job_count; i++) {
+    int  i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active) {
             int status;
             if (waitpid(jobs[i].pid, &status, WNOHANG) > 0) {
@@ -116,14 +117,16 @@ void updateJobStatus(void) {
 }
 
 void displayJobs(void) {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active)
             printf("[Job %d] Running: %s (PID: %d)\n", jobs[i].job_id, jobs[i].command, jobs[i].pid);
     }
 }
 
 void bringJobToForeground(int job_id) {
-    for (int i = 0; i < job_count; i++) {
+    int i;
+    for (i = 0; i < job_count; i++) {
         if (jobs[i].active && jobs[i].job_id == job_id) {
             printf("Bringing job %d to foreground: %s\n", job_id, jobs[i].command);
             waitpid(jobs[i].pid, NULL, 0);
@@ -186,8 +189,8 @@ int tokenizeCommand(char *commandStr, char **tokens) {
 }
 
 void executeCommands(char **commands, int commandCount, int *backgroundFlags, int output_fd) {
-    int in_fd = STDIN_FILENO, pipe_fd[2];
-    for (int i = 0; i < commandCount; i++) {
+    int in_fd = STDIN_FILENO, pipe_fd[2], i;
+    for (i = 0; i < commandCount; i++) {
         char *args[MAX_ARGS];
         tokenizeCommand(commands[i], args);
         if (i < commandCount - 1) {
@@ -205,8 +208,9 @@ void executeCommands(char **commands, int commandCount, int *backgroundFlags, in
 }
 
 char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
+    char *end;
     segment = skipWhitespace(segment);
-    char *end = segment;
+    end = segment;
     while (*end && *end != SPECIAL_PIPE && *end != SPECIAL_REDIR && *end != SPECIAL_BG) {
         end++;
     }
@@ -218,8 +222,8 @@ char *parseCommandSegment(char *segment, int *backgroundFlag, int *output_fd) {
 
 int parseInputLine(char *input, char **commands, int *backgroundFlags, int *output_fd) {
     int count = 0;
-    *output_fd = STDOUT_FILENO;
     char *ptr = input;
+    *output_fd = STDOUT_FILENO;
 
     while (*ptr) {
         ptr = skipWhitespace(ptr);
@@ -235,6 +239,11 @@ int parseInputLine(char *input, char **commands, int *backgroundFlags, int *outp
 }
 
 void processInput(char *input) {
+    int job_id;
+    char *args[MAX_ARGS], *commands[MAX_ARGS];
+    int backgroundFlags[MAX_ARGS] = {0};
+    int output_fd, commandCount;
+
     updateJobStatus();
 
     if (strncmp(input, "jobs", 4) == 0) {
@@ -242,21 +251,17 @@ void processInput(char *input) {
         return;
     }
     if (strncmp(input, "fg", 2) == 0) {
-        int job_id = atoi(input + 3);
+        job_id = atoi(input + 3);
         bringJobToForeground(job_id);
         return;
     }
     if (strncmp(input, "cd", 2) == 0) {
-        char *args[MAX_ARGS];
         tokenizeCommand(input, args);
         handle_cd(args);
         return;
     }
-
-    char *commands[MAX_ARGS];
-    int backgroundFlags[MAX_ARGS] = {0};
-    int output_fd;
-    int commandCount = parseInputLine(input, commands, backgroundFlags, &output_fd);
+    
+    commandCount = parseInputLine(input, commands, backgroundFlags, &output_fd);
 
     executeCommands(commands, commandCount, backgroundFlags, output_fd);
     if (output_fd != STDOUT_FILENO) close(output_fd);
