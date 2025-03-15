@@ -54,12 +54,13 @@ static inline char *skipWhitespaceAndPipes(char *ptr) {
 
 static char *handleRedirection(char *ptr, int *backgroundFlag, int *output_fd) {
     char special = *ptr;
+    char *filename; 
     *ptr = '\0';
     ptr++;
     
     if (special == SPECIAL_REDIR) {
         ptr = skipWhitespace(ptr);
-        char *filename = ptr;
+        filename = ptr;
         while (*ptr && *ptr != ' ' && *ptr != '\t') {
             ptr++;
         }
