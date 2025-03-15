@@ -101,7 +101,7 @@ void handle_cd(char **args) {
             perror("cd failed");
         }
     } else {
-        /* Change to specified directory
+        /* Change to specified directory  */
         if (chdir(args[1]) != 0) {
             perror("cd failed");
         }
@@ -111,7 +111,7 @@ void handle_cd(char **args) {
 
 void execute_command(char *command, char **args, int input_fd, int output_fd, int background) {
     pid_t pid = fork();
-    if (pid == 0) { /* Child process
+    if (pid == 0) { /* Child process  */
         if (input_fd != STDIN_FILENO) {
             dup2(input_fd, STDIN_FILENO);
             close(input_fd);
@@ -275,10 +275,9 @@ void disable_raw_mode() {
 }
 
 int main() {
-    char input[1024];
+    char input[1025];
     int pos;
     char c, arrow;
-    char input[MAX_INPUT + 1];
 
     signal(SIGINT,sigint_handler);
     enable_raw_mode(); /* Enable raw mode for handling arrow keys  */
@@ -304,7 +303,7 @@ int main() {
                 while (getchar() != '\n'); /* Discard rest of line */
                 printf("\nError: Input exceeds %d characters! Command ignored.\n", MAX_INPUT);
                 continue; /* Skip `process_input()` */
-            } else if (c == '\x1B') { /* Escape sequence for arrow keys
+            } else if (c == '\x1B') { /* Escape sequence for arrow keys  */
                 getchar(); /* Skip '['  */
                 arrow = getchar();
                 if (arrow == 'A') { /* Up arrow  */
